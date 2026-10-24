@@ -15,6 +15,9 @@ from . import paths
 
 @dataclass
 class Config:
+    # --- language ---------------------------------------------------------
+    language: str = "ko"               # ko | en  (UI language)
+
     # --- recognition model / profile -------------------------------------
     profile: str = "balanced"          # lite | balanced | accurate (set by PC Analysis)
     det_size: int = 320                # YuNet detector input (square)
@@ -27,8 +30,13 @@ class Config:
 
     # --- liveness / anti-spoofing ----------------------------------------
     liveness_enabled: bool = True
-    liveness_challenge: str = "turn"   # turn | nod | motion
+    liveness_challenge: str = "blink"  # blink | turn | nod | motion
     min_face_sharpness: float = 45.0   # Laplacian variance floor (rejects flat photos)
+
+    # --- adaptive templates (appearance changes over time / aging) -------
+    adaptive_update: bool = True       # learn gradual appearance changes
+    adaptive_min_score: float = 0.5    # only learn from very confident matches
+    max_templates: int = 40            # cap; oldest embeddings are evicted first
 
     # --- scope: which features are active --------------------------------
     enable_vault: bool = True

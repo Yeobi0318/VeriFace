@@ -53,7 +53,7 @@ class AuthSession:
 
         store = TemplateStore()
         if not store.enrolled:
-            return AuthResult(False, 0.0, "No face is enrolled yet.")
+            return AuthResult(False, 0.0, "no_enroll")
         templates = np.asarray(store.embeddings(), dtype=np.float32)
         threshold = float(self.cfg.match_threshold)
         deadline = time.time() + max(3, int(self.cfg.auth_timeout_seconds))
@@ -65,39 +65,50 @@ class AuthSession:
                     FaceEngine(self.cfg.det_size) as engine:
                 while not self._stop.is_set():
                     if time.time() > deadline:
-                        return AuthResult(False, best,
-                                          "Timed out - face not recognised.")
+                        return AuthResult(False, best, "timeout")
                     frame = cam.read()
                     det = engine.largest(frame)
-                    info = {"score": best, "threshold": threshold}
+                    info = {"score": best, "threshold": threshold,
+                            "challenge": self.cfg.liveness_challenge}
 
                     if det is None or det.score < 0.85:
-                        info["status"] = "Looking for your face..."
+                        info["status_key"] = "looking"
                         self.on_update(frame, info)
                         continue
 
                     vec, aligned = engine.embed(frame, det)
-                    live.update(det, aligned)
+                    live.update(det, aligned, frame)
                     score = float(np.max(templates @ vec))  # best cosine vs templates
                     best = max(best, score)
 
-                    live_ok, live_msg = (True, "") if not self.cfg.liveness_enabled \
+                    live_ok, reason = (True, "live_ok") if not self.cfg.liveness_enabled \
                         else live.passed()
 
                     info.update(score=score, bbox=det.bbox,
                                 live_progress=live.progress())
                     if score >= threshold and live_ok:
-                        info["status"] = "Recognised"
+                        info["status_key"] = "recognized"
                         self.on_update(frame, info)
-                        return AuthResult(True, score, "Face recognised.")
+                        self._maybe_adapt(store, vec, score)
+                        return AuthResult(True, score, "recognized")
                     if score >= threshold and not live_ok:
-                        info["status"] = f"Match found - {live.hint()}"
+                        # matched the face; now guide/validate liveness
+                        info["status_key"] = ("match_challenge"
+                                              if reason == "do_challenge" else reason)
                     else:
-                        info["status"] = "Not recognised - keep still and face camera"
+                        info["status_key"] = "not_recognized"
                     self.on_update(frame, info)
-            return AuthResult(False, best, "Cancelled.")
+            return AuthResult(False, best, "cancelled")
         except Exception as exc:
             return AuthResult(False, best, str(exc))
+
+    def _maybe_adapt(self, store: TemplateStore, vec, score: float) -> None:
+        """Learn gradual appearance changes from a very confident, live match."""
+        if self.cfg.adaptive_update and score >= float(self.cfg.adaptive_min_score):
+            try:
+                store.add_adaptive(vec, self.cfg.max_templates)
+            except Exception:
+                pass  # never let template upkeep break a successful auth
 
 
 def verify_blocking(cfg: Config, timeout: Optional[int] = None) -> AuthResult:

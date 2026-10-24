@@ -36,10 +36,24 @@ def _write_encrypted(path, obj: dict[str, Any]) -> None:
 
 # --- face templates ---------------------------------------------------------
 class TemplateStore:
-    """Persists enrolled face embeddings for a single local user."""
+    """Persists enrolled face embeddings for a single local user.
+
+    Each embedding carries a timestamp so the set can *age*: after a very
+    confident match the live embedding is added and the oldest one is evicted
+    once the cap is reached. This lets the template follow slow appearance
+    changes (ageing, weight, facial hair) without ever being retrained on a
+    low-confidence (possibly wrong) face.
+    """
 
     def __init__(self) -> None:
         self._data = _read_encrypted(paths.TEMPLATES_PATH)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        embs = self._data.get("embeddings")
+        if embs and "timestamps" not in self._data:
+            base = float(self._data.get("created_at", time.time()))
+            self._data["timestamps"] = [base] * len(embs)
 
     @property
     def enrolled(self) -> bool:
@@ -52,16 +66,37 @@ class TemplateStore:
     def embeddings(self) -> list[list[float]]:
         return list(self._data.get("embeddings", []))
 
+    def count(self) -> int:
+        return len(self._data.get("embeddings", []))
+
     def meta(self) -> dict[str, Any]:
         return dict(self._data.get("meta", {}))
 
     def save(self, embeddings: list[list[float]], meta: dict[str, Any]) -> None:
+        now = time.time()
         self._data = {
-            "version": 1,
-            "created_at": time.time(),
-            "embeddings": embeddings,
+            "version": 2,
+            "created_at": now,
+            "embeddings": [list(map(float, e)) for e in embeddings],
+            "timestamps": [now] * len(embeddings),
             "meta": meta,
         }
+        _write_encrypted(paths.TEMPLATES_PATH, self._data)
+
+    def add_adaptive(self, embedding, max_templates: int = 40) -> None:
+        """Append a freshly-verified embedding and evict the oldest if over cap."""
+        if not self.enrolled:
+            return
+        embs = self._data.setdefault("embeddings", [])
+        tss = self._data.setdefault("timestamps", [])
+        embs.append([float(x) for x in embedding])
+        tss.append(time.time())
+        # keep the enrollment baseline safe: evict by oldest timestamp, but never
+        # let the set fall below a handful of samples.
+        while len(embs) > max(5, int(max_templates)):
+            oldest = min(range(len(tss)), key=lambda i: tss[i])
+            embs.pop(oldest)
+            tss.pop(oldest)
         _write_encrypted(paths.TEMPLATES_PATH, self._data)
 
     def clear(self) -> None:

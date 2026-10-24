@@ -18,7 +18,6 @@ from typing import Callable, Optional
 from .camera import Camera
 from .config import Config
 from .face_engine import FaceEngine
-from .liveness import LivenessTracker
 
 FrameCb = Callable[[object, dict], None]   # (bgr_frame, status_info)
 
@@ -52,26 +51,23 @@ class EnrollmentSession:
     def _run(self) -> EnrollResult:
         target = max(3, int(self.cfg.enroll_samples))
         last_vec = None
-        live = LivenessTracker(self.cfg.liveness_challenge, self.cfg.min_face_sharpness)
         next_capture = 0.0
         try:
             with Camera(self.cfg.camera_index) as cam, \
                     FaceEngine(self.cfg.det_size) as engine:
                 while not self._stop.is_set():
                     if len(self.embeddings) >= target:
-                        return EnrollResult(True, len(self.embeddings),
-                                            "Enrollment complete.")
+                        return EnrollResult(True, len(self.embeddings), "complete")
                     frame = cam.read()
                     det = engine.largest(frame)
                     info = {"count": len(self.embeddings), "target": target}
 
                     if det is None or det.score < 0.85:
-                        info["status"] = "Position your face in the frame"
+                        info["status_key"] = "position_face"
                         self.on_update(frame, info)
                         continue
 
                     vec, aligned = engine.embed(frame, det)
-                    live.update(det, aligned)
 
                     now = time.time()
                     novel = last_vec is None or FaceEngine.cosine(vec, last_vec) < 0.985
@@ -83,9 +79,8 @@ class EnrollmentSession:
 
                     info["count"] = len(self.embeddings)
                     info["bbox"] = det.bbox
-                    info["status"] = ("Great - keep slowly changing your angle "
-                                      "(try glasses on/off)")
+                    info["status_key"] = "capturing"
                     self.on_update(frame, info)
-            return EnrollResult(False, len(self.embeddings), "Cancelled.")
+            return EnrollResult(False, len(self.embeddings), "cancelled")
         except Exception as exc:  # surface camera/model errors to the UI
             return EnrollResult(False, len(self.embeddings), str(exc))
