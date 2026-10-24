@@ -24,7 +24,9 @@ VeriFace는 웹캠으로 **본인을 인식**해, 얼굴로 잠금 해제되는 
   **Windows DPAPI**로 현재 사용자 계정에 묶어 암호화.
 - **기초 라이브니스(위변조 방지)** — 고개 돌리기/끄덕이기 등 능동 챌린지 + 텍스처 검사로
   단순 사진 공격을 차단.
-- **사용자 친화 GUI** — 단일 창 탭 UI(상태/PC 분석/등록/금고/설정/정보).
+- **Windows Hello Face 안내** — `Login & Chrome` 탭에서 OS 로그인·크롬 비밀번호를 얼굴로
+  쓰는 **지원되는 방법**(Windows Hello Face) 설정을 안내하고 IR 카메라 유무를 점검.
+- **사용자 친화 GUI** — 단일 창 탭 UI(상태/PC 분석/등록/금고/Login & Chrome/설정/정보).
 - **단일 EXE** — `build.bat` 하나로 `dist\VeriFace.exe` 생성.
 
 ---
@@ -36,8 +38,12 @@ VeriFace는 웹캠으로 **본인을 인식**해, 얼굴로 잠금 해제되는 
 
 | 요청 | VeriFace의 구현 | 이유 |
 |---|---|---|
-| "크롬 비밀번호 관리자 대체" | 크롬 저장소를 읽지 않고, **얼굴로 잠금 해제되는 자체 금고** 제공 | 브라우저 암호 저장소를 복호화해 읽는 것은 자격증명 탈취 기법과 동일하여 수행하지 않음 |
-| "Windows PIN 로그인 대체" | **OS 로그인 화면은 대체하지 않음.** 앱/금고 수준 얼굴 잠금 제공 | 진짜 OS 로그인은 **Windows Hello** 또는 커스텀 Credential Provider의 영역. PIN을 저장·자동입력하면 오히려 보안이 약해짐 |
+| "크롬 비밀번호를 PIN 대신 얼굴로" | 크롬을 건드리지 않음. **Windows Hello Face** 설정을 안내 (크롬의 "Windows Hello로 비밀번호 채우기"가 Hello를 경유하므로 얼굴로 인증됨) + 자체 금고 제공 | 크롬 프로세스/저장소에 개입하는 것은 자격증명 탈취·인젝션 기법과 동일하여 수행하지 않음 |
+| "Windows PIN 로그인을 얼굴로" | **OS 로그인 화면은 직접 대체하지 않음.** `Login & Chrome` 탭에서 **Windows Hello Face** 설정을 안내 | 진짜 OS 로그인은 커스텀 Credential Provider(미서명 DLL)의 영역 — 잠금(lockout) 위험 + RGB 웹캠만으로는 사진 스푸핑에 취약. Microsoft가 IR 카메라를 요구하는 이유 |
+
+> **중요:** Windows Hello Face는 **IR 카메라**가 있어야 동작합니다. `Login & Chrome` 탭의
+> `🔍 Check this PC`로 내 PC에 IR 카메라가 있는지 확인하세요. IR 카메라가 없으면 OS/크롬
+> 얼굴 로그인은 이 PC에서 사용할 수 없고, **VeriFace 자체 얼굴 잠금·금고**만 사용 가능합니다.
 
 - 라이브니스는 **기초 수준**입니다. 사진 공격은 막지만, 정교한 **영상 재생 공격**까지
   막지는 못합니다.
@@ -77,6 +83,11 @@ python -m veriface auth        REM 본인 확인 (종료코드 0=일치, 1=불�
 
 ---
 
+## 🛠️ 문제 해결
+- 실행 시 오류가 나면 `%LOCALAPPDATA%\VeriFace\veriface.log` 에 내용이 기록됩니다.
+- 1.0.1에서 **윈도우(콘솔 없는) exe가 바로 종료되던 문제**(상대 import / stderr=None)를
+  수정했습니다. 이전 exe를 쓰셨다면 릴리스에서 **최신 exe를 다시 받아주세요**.
+
 ## 🧩 동작 구조
 
 ```
@@ -91,6 +102,7 @@ veriface/
    ├─ liveness.py     능동 챌린지 기반 기초 라이브니스
    ├─ enrollment.py   다양한 각도 샘플 수집 세션
    ├─ authenticator.py 임계값 + 라이브니스 동시 충족 시에만 인증
+   ├─ win_hello.py    Windows Hello Face 안내/IR 카메라 점검
    ├─ store.py        DPAPI 암호화 템플릿/금고 저장소
    ├─ crypto.py       ctypes 기반 DPAPI (pywin32 불필요)
    ├─ camera.py       지연 개방/확실한 해제 웹캠 래퍼

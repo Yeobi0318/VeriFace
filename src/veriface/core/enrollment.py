@@ -50,8 +50,6 @@ class EnrollmentSession:
         self._stop.set()
 
     def _run(self) -> EnrollResult:
-        import numpy as np
-
         target = max(3, int(self.cfg.enroll_samples))
         last_vec = None
         live = LivenessTracker(self.cfg.liveness_challenge, self.cfg.min_face_sharpness)

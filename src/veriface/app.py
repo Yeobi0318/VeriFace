@@ -16,7 +16,7 @@ from typing import Callable, Optional
 import customtkinter as ctk
 
 from .version import __version__, APP_NAME
-from .core import hardware, model_manager
+from .core import hardware, model_manager, win_hello
 from .core.config import Config
 from .core.store import TemplateStore, VaultStore
 from .core.enrollment import EnrollmentSession, EnrollResult
@@ -66,12 +66,14 @@ class VeriFaceApp(ctk.CTk):
 
         self.tabs = ctk.CTkTabview(self)
         self.tabs.pack(fill="both", expand=True, padx=12, pady=12)
-        for name in ("Status", "PC Analysis", "Enroll", "Vault", "Settings", "About"):
+        for name in ("Status", "PC Analysis", "Enroll", "Vault",
+                     "Login & Chrome", "Settings", "About"):
             self.tabs.add(name)
         self._build_status()
         self._build_analysis()
         self._build_enroll()
         self._build_vault()
+        self._build_login_chrome()
         self._build_settings()
         self._build_about()
         self._refresh_status()
@@ -458,6 +460,47 @@ class VeriFaceApp(ctk.CTk):
             self._refresh_vault_list()
         ctk.CTkButton(dlg, text="Save", command=save).pack(pady=16)
 
+    # ====================================================== LOGIN & CHROME
+    def _build_login_chrome(self) -> None:
+        t = self.tabs.tab("Login & Chrome")
+        ctk.CTkLabel(t, text="Face login for Windows & Chrome",
+                     font=("", 16, "bold")).pack(pady=(12, 2))
+        ctk.CTkLabel(
+            t, justify="left", text_color="gray",
+            text="The secure, supported way to use your face instead of the PIN "
+                 "for\nthe Windows sign-in AND Chrome passwords is Windows Hello "
+                 "Face.").pack(pady=(0, 8))
+
+        steps = ctk.CTkTextbox(t, height=190, width=690)
+        steps.pack(padx=12)
+        steps.insert("1.0", LOGIN_STEPS)
+        steps.configure(state="disabled")
+
+        row = ctk.CTkFrame(t, fg_color="transparent")
+        row.pack(pady=10)
+        ctk.CTkButton(row, text="🔍  Check this PC", width=150,
+                      command=self._check_hello).grid(row=0, column=0, padx=5)
+        ctk.CTkButton(row, text="⚙  Windows sign-in settings", width=210,
+                      command=win_hello.open_signin_settings).grid(row=0, column=1, padx=5)
+        ctk.CTkButton(row, text="🌐  Chrome passwords", width=170, fg_color="gray30",
+                      command=win_hello.open_chrome_password_settings).grid(
+            row=0, column=2, padx=5)
+
+        self.hello_result = ctk.CTkLabel(t, text="", justify="left", wraplength=680)
+        self.hello_result.pack(pady=(4, 2), padx=12, anchor="w")
+
+    def _check_hello(self) -> None:
+        self.hello_result.configure(text="Checking cameras and Hello capability...")
+
+        def work():
+            st = win_hello.detect()
+            cams = ", ".join(st.cameras) or "none"
+            txt = (f"Cameras: {cams}\n"
+                   f"IR camera (Hello Face): {'yes - ' + ', '.join(st.ir_cameras) if st.ir_cameras else 'not detected'}\n"
+                   f"\n{st.note}")
+            self.after(0, lambda: self.hello_result.configure(text=txt))
+        threading.Thread(target=work, daemon=True).start()
+
     # ============================================================ SETTINGS
     def _build_settings(self) -> None:
         t = self.tabs.tab("Settings")
@@ -558,13 +601,35 @@ HONEST SECURITY NOTES  (please read)
   - This is a convenience + research tool, not a certified security product.
   - Liveness here is a BASIC active challenge (head turn/nod + texture check).
     It stops casual photo attacks but not a determined video-replay attacker.
-  - VeriFace does NOT replace the Windows logon screen. True OS-login by face
-    is provided by Windows Hello, or requires a custom Credential Provider.
+  - VeriFace does NOT replace the Windows logon screen, and does NOT hook or
+    read Chrome. For face login at the OS sign-in AND for Chrome's password
+    prompt, use Windows Hello Face - see the "Login & Chrome" tab. That is the
+    supported path; a custom credential provider would risk locking you out.
     VeriFace deliberately does not store or replay your Windows PIN.
   - The vault is a safe alternative to exporting browser passwords; VeriFace
     does NOT read or decrypt Chrome's password store.
   - Biometrics cannot be changed if leaked. Keep a Windows password/PIN as the
     real fallback.
+"""
+
+
+LOGIN_STEPS = """How to use your FACE instead of your PIN — the supported, secure way:
+
+WINDOWS SIGN-IN (lock screen)
+  1. Click "Windows sign-in settings" below (Settings > Accounts > Sign-in options).
+  2. Open "Facial recognition (Windows Hello)" > Set up, and follow the wizard.
+  3. From then on the lock screen recognises your face instead of asking the PIN.
+     (Windows keeps your PIN as a recovery fallback — this is intentional.)
+
+CHROME PASSWORDS
+  1. Set up Windows Hello Face (above) first.
+  2. Click "Chrome passwords" below, open Settings, and turn ON
+     "Use Windows Hello when filling passwords".
+  3. Chrome will now verify you by face before revealing/filling a password.
+
+NOTE: Windows Hello Face needs an IR camera. Use "Check this PC" to see whether
+yours has one. If it doesn't, OS/Chrome face login isn't available on this
+device — but VeriFace's own in-app face unlock and vault still work.
 """
 
 
