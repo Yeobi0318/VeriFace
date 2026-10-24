@@ -9,6 +9,7 @@ venv/
 build/
 dist/
 *.manifest
+*.exe
 
 # Local AI models (downloaded at runtime via PC Analysis)
 *.onnx
